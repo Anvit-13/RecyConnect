@@ -1,149 +1,116 @@
+import { useState, useEffect } from 'react';
 import { Layout } from './Layout';
-import { Recycle, Calendar, Package, CheckCircle2, Weight } from 'lucide-react';
+import { Database, Search, Calendar, Package } from 'lucide-react';
 import { Card } from './ui/card';
+import { Input } from './ui/input';
+import recyclingService, { RecyclingRecord } from '../../services/recyclingService';
+import { toast } from 'sonner';
 
 export function RecyclingRecords() {
-  const records = [
-    {
-      id: 'REC-2024-156',
-      requestId: 'REQ-2024-089',
-      devices: ['Laptop Dell XPS 13', 'Smartphone Samsung Galaxy S20'],
-      recyclingDate: '2026-03-04',
-      weight: '3.2 kg',
-      status: 'Completed',
-      materials: { copper: '120g', aluminum: '450g', plastic: '1.8kg', gold: '0.8g' },
-    },
-    {
-      id: 'REC-2024-155',
-      requestId: 'REQ-2024-088',
-      devices: ['Desktop PC HP Pavilion', 'Monitor LG 27"'],
-      recyclingDate: '2026-03-03',
-      weight: '12.5 kg',
-      status: 'Completed',
-      materials: { copper: '380g', aluminum: '2.1kg', plastic: '4.5kg', gold: '1.2g' },
-    },
-    {
-      id: 'REC-2024-154',
-      requestId: 'REQ-2024-087',
-      devices: ['Tablet iPad Air', 'Keyboard Apple Magic'],
-      recyclingDate: '2026-03-02',
-      weight: '1.8 kg',
-      status: 'Completed',
-      materials: { copper: '85g', aluminum: '320g', plastic: '950g', gold: '0.5g' },
-    },
-    {
-      id: 'REC-2024-153',
-      requestId: 'REQ-2024-086',
-      devices: ['Smartphone iPhone 11', 'Chargers (3x)'],
-      recyclingDate: '2026-03-01',
-      weight: '0.9 kg',
-      status: 'Completed',
-      materials: { copper: '45g', aluminum: '180g', plastic: '520g', gold: '0.3g' },
-    },
-    {
-      id: 'REC-2024-152',
-      requestId: 'REQ-2024-085',
-      devices: ['Gaming Console PS4', 'Controllers (2x)'],
-      recyclingDate: '2026-02-28',
-      weight: '4.5 kg',
-      status: 'Completed',
-      materials: { copper: '210g', aluminum: '1.2kg', plastic: '2.5kg', gold: '0.6g' },
-    },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [records, setRecords] = useState<RecyclingRecord[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    fetchRecords();
+  }, []);
+
+  const fetchRecords = async () => {
+    try {
+      const response = await recyclingService.getRecords();
+      setRecords(response.data.records);
+    } catch (error) {
+      toast.error('Failed to load records');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredRecords = records.filter(record => 
+    record.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    record.material_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    record.pickup_id?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <Layout userType="recycler">
       <div className="p-8">
         <div className="mb-8">
           <h1 className="text-foreground mb-2">Recycling Records</h1>
-          <p className="text-muted-foreground">View all processed devices and recycling activities</p>
+          <p className="text-muted-foreground">View detailed logs of all processed e-waste batches</p>
         </div>
 
-        <div className="space-y-6">
-          {records.map((record) => (
-            <Card key={record.id} className="border border-border shadow-sm overflow-hidden">
-              <div className="p-6 bg-muted/30 border-b border-border">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                      <Recycle className="w-6 h-6 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="text-foreground">{record.id}</h3>
-                      <p className="text-sm text-muted-foreground">Request: {record.requestId}</p>
-                    </div>
-                  </div>
-                  <span className="inline-flex items-center px-4 py-2 rounded-full text-sm bg-primary/10 text-primary border border-primary/20">
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                    {record.status}
-                  </span>
-                </div>
-              </div>
+        <div className="mb-6 flex gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search by ID, material, or pickup source..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 bg-card border-border"
+            />
+          </div>
+        </div>
 
-              <div className="p-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  {/* Device Information */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-4">
-                      <Package className="w-5 h-5 text-primary" />
-                      <h4 className="text-foreground">Processed Devices</h4>
-                    </div>
-                    <ul className="space-y-2">
-                      {record.devices.map((device, idx) => (
-                        <li key={idx} className="flex items-center gap-2 text-muted-foreground">
-                          <div className="w-2 h-2 bg-primary rounded-full"></div>
-                          <span>{device}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-4 pt-4 border-t border-border">
-                      <div className="flex items-center justify-between">
+        <Card className="border border-border shadow-sm bg-card">
+          <div className="p-6 border-b border-border">
+            <h3 className="text-foreground flex items-center gap-2">
+              <Database className="w-5 h-5 text-primary" />
+              Processing History
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+             {loading ? (
+                <div className="p-8 text-center text-muted-foreground">Loading records...</div>
+             ) : (
+              <table className="w-full">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Record ID</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Pickup Source</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Material Grade</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Weight Recovered</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Value Extracted</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Processed Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredRecords.length === 0 ? (
+                     <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No records found.</td></tr>
+                  ) : filteredRecords.map((record) => (
+                    <tr key={record.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-primary font-medium">{record.id?.substring(0, 8)}...</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2 text-foreground">
+                          <Package className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-secondary">{record.pickup_id?.substring(0, 10)}...</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-foreground capitalize">{record.material_type}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-foreground font-medium">{parseFloat(record.weight_kg).toFixed(1)} kg</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-primary font-medium">${parseFloat(record.value_usd).toFixed(2)}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Calendar className="w-4 h-4" />
-                          <span>Recycling Date</span>
+                          <span>{new Date(record.processed_date).toLocaleString()}</span>
                         </div>
-                        <span className="text-foreground">{record.recyclingDate}</span>
-                      </div>
-                      <div className="flex items-center justify-between mt-2">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Weight className="w-4 h-4" />
-                          <span>Total Weight</span>
-                        </div>
-                        <span className="text-foreground">{record.weight}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Recovered Materials */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-4">
-                      <Recycle className="w-5 h-5 text-primary" />
-                      <h4 className="text-foreground">Recovered Materials</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                        <p className="text-xs text-yellow-700 mb-1">Copper</p>
-                        <p className="text-lg text-yellow-900">{record.materials.copper}</p>
-                      </div>
-                      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <p className="text-xs text-gray-700 mb-1">Aluminum</p>
-                        <p className="text-lg text-gray-900">{record.materials.aluminum}</p>
-                      </div>
-                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                        <p className="text-xs text-blue-700 mb-1">Plastic</p>
-                        <p className="text-lg text-blue-900">{record.materials.plastic}</p>
-                      </div>
-                      <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
-                        <p className="text-xs text-amber-700 mb-1">Gold</p>
-                        <p className="text-lg text-amber-900">{record.materials.gold}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+             )}
+          </div>
+        </Card>
       </div>
     </Layout>
   );

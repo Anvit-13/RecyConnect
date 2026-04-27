@@ -1,93 +1,105 @@
+import { useState, useEffect } from 'react';
 import { Layout } from './Layout';
-import { Truck, Package, CheckCircle2, Clock, TrendingUp, Calendar, MapPin } from 'lucide-react';
+import { Factory, Package, TrendingUp, CheckCircle2, Clock } from 'lucide-react';
 import { Card } from './ui/card';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import recyclingService from '../../services/recyclingService';
+import { toast } from 'sonner';
+import { useNavigate } from 'react-router';
+import { Button } from './ui/button';
 
 export function RecyclerDashboard() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<{
+    stats: any;
+    processingQueue: any[];
+    weeklyData: any[];
+  }>({
+    stats: {},
+    processingQueue: [],
+    weeklyData: []
+  });
+
+  useEffect(() => {
+    fetchDashboard();
+  }, []);
+
+  const fetchDashboard = async () => {
+    try {
+      const response = await recyclingService.getDashboardStats();
+      setData(response.data);
+    } catch (error) {
+      toast.error('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'completed':
+        return 'bg-primary/10 text-primary border-primary/20';
+      case 'in-progress':
+        return 'bg-secondary/10 text-secondary border-secondary/20';
+      case 'pending':
+        return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+      case 'scheduled':
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      default:
+        return 'bg-muted text-muted-foreground border-border';
+    }
+  };
+
+  if (loading) {
+     return (
+       <Layout userType="recycler">
+         <div className="p-8 text-center text-muted-foreground">Loading dashboard...</div>
+       </Layout>
+     );
+  }
+
   const stats = [
     {
-      title: 'Items to Process',
-      value: '28',
-      change: '+5 today',
-      icon: Package,
+      title: 'Total Processed',
+      value: data.stats.total_processed || '0',
+      change: 'Lifetime',
+      icon: Factory,
       color: 'text-primary',
       bgColor: 'bg-primary/10',
     },
     {
-      title: 'Processing',
-      value: '12',
-      change: 'In progress',
-      icon: Clock,
+      title: 'In Queue',
+      value: data.stats.processing || '0',
+      change: 'Pending Devices',
+      icon: Package,
+      color: 'text-secondary',
+      bgColor: 'bg-secondary/10',
+    },
+    {
+      title: 'Materials Recovered',
+      value: `${parseFloat(data.stats.materials_recovered || '0').toFixed(1)} kg`,
+      change: 'Lifetime',
+      icon: TrendingUp,
       color: 'text-yellow-600',
       bgColor: 'bg-yellow-50',
     },
     {
-      title: 'Completed Today',
-      value: '15',
-      change: '+3 from yesterday',
+      title: 'Value Generated',
+      value: `$${parseFloat(data.stats.value_generated || '0').toFixed(2)}`,
+      change: 'Lifetime',
       icon: CheckCircle2,
       color: 'text-primary',
       bgColor: 'bg-primary/10',
     },
-    {
-      title: 'Materials Recovered',
-      value: '186 kg',
-      change: '+22%',
-      icon: TrendingUp,
-      color: 'text-secondary',
-      bgColor: 'bg-secondary/10',
-    },
   ];
-
-  const processingQueue = [
-    { id: 'ITEM-2024-345', type: 'Laptop', brand: 'Dell XPS 15', from: 'REQ-2024-089', status: 'Processing', priority: 'High' },
-    { id: 'ITEM-2024-346', type: 'Monitor', brand: 'Samsung 27"', from: 'REQ-2024-089', status: 'Pending', priority: 'Medium' },
-    { id: 'ITEM-2024-347', type: 'Desktop PC', brand: 'HP Pavilion', from: 'REQ-2024-090', status: 'Pending', priority: 'High' },
-    { id: 'ITEM-2024-348', type: 'Printer', brand: 'Canon Pixma', from: 'REQ-2024-091', status: 'Pending', priority: 'Low' },
-  ];
-
-  const weeklyData = [
-    { day: 'Mon', processed: 18 },
-    { day: 'Tue', processed: 22 },
-    { day: 'Wed', processed: 20 },
-    { day: 'Thu', processed: 25 },
-    { day: 'Fri', processed: 15 },
-    { day: 'Sat', processed: 12 },
-    { day: 'Sun', processed: 8 },
-  ];
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Processing':
-        return 'bg-secondary/10 text-secondary';
-      case 'Pending':
-        return 'bg-yellow-50 text-yellow-700';
-      case 'Completed':
-        return 'bg-primary/10 text-primary';
-      default:
-        return 'bg-muted text-muted-foreground';
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'High':
-        return 'text-red-600';
-      case 'Medium':
-        return 'text-yellow-600';
-      case 'Low':
-        return 'text-green-600';
-      default:
-        return 'text-muted-foreground';
-    }
-  };
 
   return (
     <Layout userType="recycler">
       <div className="p-8">
         <div className="mb-8">
           <h1 className="text-foreground mb-2">Recycler Dashboard</h1>
-          <p className="text-muted-foreground">Process e-waste and track material recovery</p>
+          <p className="text-muted-foreground">Monitor processing metrics and material recovery</p>
         </div>
 
         {/* Stats Cards */}
@@ -95,7 +107,14 @@ export function RecyclerDashboard() {
           {stats.map((stat) => {
             const Icon = stat.icon;
             return (
-              <Card key={stat.title} className="p-6 border border-border shadow-sm hover:shadow-md transition-shadow">
+              <Card 
+                key={stat.title} 
+                className="p-6 border border-border shadow-sm bg-card hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => {
+                  if (stat.title === 'In Queue') navigate('/processing-center');
+                  if (stat.title === 'Total Processed') navigate('/recycling-records');
+                }}
+              >
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">{stat.title}</p>
@@ -112,71 +131,85 @@ export function RecyclerDashboard() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Processing Queue */}
-          <div className="lg:col-span-2">
-            <Card className="border border-border shadow-sm">
-              <div className="p-6 border-b border-border">
-                <h3 className="text-foreground flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-primary" />
-                  Processing Queue
-                </h3>
-              </div>
-              <div className="p-6">
-                <div className="space-y-4">
-                  {processingQueue.map((item) => (
-                    <div key={item.id} className="p-4 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <p className="text-primary mb-1">{item.id}</p>
-                          <p className="text-foreground">{item.type} - {item.brand}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-medium ${getPriorityColor(item.priority)}`}>
-                            {item.priority}
-                          </span>
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs ${getStatusColor(item.status)}`}>
-                            {item.status}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Package className="w-4 h-4" />
-                          <span>From: {item.from}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Weekly Performance */}
-          <div>
-            <Card className="border border-border shadow-sm">
-              <div className="p-6 border-b border-border">
-                <h3 className="text-foreground">Items Processed</h3>
-              </div>
-              <div className="p-6">
+          {/* Main Chart */}
+          <Card className="lg:col-span-2 border border-border shadow-sm bg-card">
+            <div className="p-6 border-b border-border">
+              <h3 className="text-foreground">Weekly Processing Volume (kg)</h3>
+            </div>
+            <div className="p-6">
+               {data.weeklyData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={weeklyData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <AreaChart data={data.weeklyData}>
+                    <defs>
+                      <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
                     <XAxis dataKey="day" stroke="#64748b" />
                     <YAxis stroke="#64748b" />
                     <Tooltip 
                       contentStyle={{ 
-                        backgroundColor: '#fff', 
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '8px'
+                        backgroundColor: 'var(--card)', 
+                        color: 'var(--card-foreground)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '6px'
                       }}
                     />
-                    <Bar dataKey="processed" fill="#10b981" radius={[8, 8, 0, 0]} />
-                  </BarChart>
+                    <Area type="monotone" dataKey="amount" stroke="#10b981" fillOpacity={1} fill="url(#colorAmount)" />
+                  </AreaChart>
                 </ResponsiveContainer>
-              </div>
-            </Card>
-          </div>
+              ) : (
+                <div className="flex items-center justify-center h-[300px] text-muted-foreground">Not enough data to display processing volume.</div>
+              )}
+            </div>
+          </Card>
+
+          {/* Processing Queue */}
+          <Card className="border border-border shadow-sm bg-card">
+            <div className="p-6 border-b border-border flex items-center justify-between">
+              <h3 className="text-foreground">Processing Queue</h3>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-primary hover:text-primary/80"
+                onClick={() => navigate('/processing-center')}
+              >
+                View Full Queue
+              </Button>
+            </div>
+            <div className="p-0">
+               {data.processingQueue.length === 0 ? (
+                  <div className="p-6 text-center text-muted-foreground">Queue is empty.</div>
+               ) : (
+                <div className="divide-y divide-border">
+                  {data.processingQueue.map((item) => (
+                    <div key={item.id} className="p-4 hover:bg-muted/30 transition-colors">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-medium text-primary">{item.id?.substring(0, 8)}...</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full border bg-card ${getStatusColor(item.status)}`}>
+                          {item.status?.replace('-', ' ')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-foreground mb-1">{item.device_count} Devices Extracted</p>
+                      <div className="flex justify-between items-center text-xs text-muted-foreground">
+                        <span>Est Value: ${parseFloat(item.total_estimated_value || '0').toFixed(2)}</span>
+                        <Button 
+                          variant="link" 
+                          size="sm" 
+                          className="h-auto p-0 text-primary"
+                          onClick={() => navigate('/processing-center')}
+                        >
+                          Process Items →
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+               )}
+            </div>
+          </Card>
         </div>
       </div>
     </Layout>

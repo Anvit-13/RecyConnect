@@ -5,6 +5,8 @@ import { Upload, Calendar, MapPin, Package, Plus, Trash2, IndianRupee } from 'lu
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
+import pickupService from '../../services/pickupService';
+import { toast } from 'sonner';
 
 interface Device {
   id: string;
@@ -17,6 +19,7 @@ interface Device {
 
 export function SubmitPickup() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
   
   const [devices, setDevices] = useState<Device[]>([
     {
@@ -108,11 +111,34 @@ export function SubmitPickup() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const deviceCount = devices.length;
-    alert(`Pickup request submitted successfully!\n${deviceCount} device(s) with total estimated value: ₹${totalEstimatedValue}`);
-    navigate('/my-requests');
+    setLoading(true);
+    
+    try {
+      const formattedDevices = devices.map(device => ({
+        deviceType: device.deviceType,
+        brand: device.brand,
+        model: device.model,
+        condition: device.condition as 'working' | 'partially-working' | 'not-working' | 'broken',
+        quantity: parseInt(device.quantity),
+        estimated_value: calculateDeviceValue(device),
+      }));
+
+      await pickupService.createPickupRequest({
+        devices: formattedDevices,
+        address: pickupInfo.address,
+        pickupDate: pickupInfo.pickupDate,
+      });
+      
+      toast.success(`Pickup request submitted successfully! Total estimated value: ₹${totalEstimatedValue}`);
+      navigate('/my-requests');
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Failed to submit pickup request';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handlePickupInfoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -531,8 +557,9 @@ export function SubmitPickup() {
               <Button
                 type="submit"
                 className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                disabled={loading}
               >
-                Submit Request
+                {loading ? 'Submitting...' : 'Submit Request'}
               </Button>
             </div>
           </form>

@@ -14,13 +14,19 @@ import {
   Wrench
 } from 'lucide-react';
 
+import { useAuth } from '../../context/AuthContext';
+
 interface LayoutProps {
   children: ReactNode;
-  userType?: 'user' | 'recycler' | 'admin' | 'collector';
+  userType?: 'user' | 'recycler' | 'admin' | 'collector' | string;
 }
 
-export function Layout({ children, userType = 'user' }: LayoutProps) {
+export function Layout({ children, userType: propsUserType }: LayoutProps) {
   const location = useLocation();
+  const { user, logout } = useAuth();
+  
+  // Auto-detect userType from role if not provided in props
+  const userType = propsUserType || user?.role || 'user';
 
   const userLinks = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -38,7 +44,7 @@ export function Layout({ children, userType = 'user' }: LayoutProps) {
   const collectorLinks = [
     { to: '/collector-dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/collection-routes', icon: Truck, label: 'Routes' },
-    { to: '/my-collections', icon: Package, label: 'Collections' },
+    { to: '/my-collections', icon: Package, label: 'My Collections' },
   ];
 
   const adminLinks = [
@@ -106,13 +112,16 @@ export function Layout({ children, userType = 'user' }: LayoutProps) {
             <Settings className="w-5 h-5" />
             <span>Settings</span>
           </Link>
-          <Link
-            to="/login"
-            className="flex items-center gap-3 px-4 py-3 rounded-lg text-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          <button
+            onClick={() => {
+              logout();
+              window.location.href = '/login';
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
           >
             <LogOut className="w-5 h-5" />
             <span>Logout</span>
-          </Link>
+          </button>
         </div>
       </aside>
 

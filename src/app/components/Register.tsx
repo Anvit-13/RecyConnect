@@ -3,9 +3,13 @@ import { Link, useNavigate } from 'react-router';
 import { User, Mail, Phone, MapPin, Building2, Lock, Leaf, ArrowRight } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { useAuth } from '../../context/AuthContext';
+import { toast } from 'sonner';
 
 export function Register() {
   const navigate = useNavigate();
+  const { register } = useAuth();
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -16,10 +20,34 @@ export function Register() {
     confirmPassword: '',
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Mock registration
-    navigate('/dashboard');
+    
+    if (formData.password !== formData.confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      await register({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        phone: formData.phone,
+        address: `${formData.address}, ${formData.city}`,
+        role: 'user',
+      });
+      
+      toast.success('Registration successful!');
+      navigate('/dashboard');
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Registration failed. Please try again.';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -182,8 +210,12 @@ export function Register() {
               </label>
             </div>
 
-            <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
-              Create Account
+            <Button 
+              type="submit" 
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+              disabled={loading}
+            >
+              {loading ? 'Creating Account...' : 'Create Account'}
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </form>

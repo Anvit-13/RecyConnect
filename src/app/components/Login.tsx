@@ -3,40 +3,52 @@ import { Link, useNavigate } from 'react-router';
 import { Mail, Lock, Leaf, ArrowRight, User, Recycle, Shield, Truck } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { useAuth } from '../../context/AuthContext';
+import { toast } from 'sonner';
 
 type UserType = 'user' | 'recycler' | 'admin' | 'collector';
 
 export function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [activeTab, setActiveTab] = useState<UserType>('user');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Mock login - navigate to appropriate dashboard based on user type
-    switch (activeTab) {
-      case 'user':
-        navigate('/dashboard');
-        break;
-      case 'recycler':
-        navigate('/recycler-dashboard');
-        break;
-      case 'admin':
-        navigate('/admin-dashboard');
-        break;
-      case 'collector':
-        navigate('/collector-dashboard');
-        break;
+    setLoading(true);
+    
+    try {
+      await login(email, password);
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      
+      toast.success('Login successful!');
+      
+      // Navigate based on user role
+      switch (user.role) {
+        case 'user':
+          navigate('/dashboard');
+          break;
+        case 'recycler':
+          navigate('/recycler-dashboard');
+          break;
+        case 'admin':
+          navigate('/admin-dashboard');
+          break;
+        case 'collector':
+          navigate('/collector-dashboard');
+          break;
+        default:
+          navigate('/dashboard');
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Login failed. Please try again.';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
-
-  const tabs = [
-    { type: 'user' as UserType, label: 'User', icon: User },
-    { type: 'recycler' as UserType, label: 'Recycler', icon: Recycle },
-    { type: 'collector' as UserType, label: 'Collector', icon: Truck },
-    { type: 'admin' as UserType, label: 'Admin', icon: Shield },
-  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-secondary/5 to-background flex items-center justify-center p-4">
@@ -51,24 +63,6 @@ export function Login() {
           <div className="text-center mb-8">
             <h1 className="text-foreground mb-2">Welcome Back</h1>
             <p className="text-muted-foreground">Sign in to your account to continue</p>
-          </div>
-
-          {/* Tabs for User Type Selection */}
-          <div className="flex flex-wrap gap-2 mb-6 bg-muted p-1 rounded-lg">
-            {tabs.map(({ type, label, icon: Icon }) => (
-              <button
-                key={type}
-                onClick={() => setActiveTab(type)}
-                className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 flex items-center justify-center gap-2 py-2.5 px-3 rounded-md transition-all ${
-                  activeTab === type
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span className="text-sm font-medium">{label}</span>
-              </button>
-            ))}
           </div>
 
           <form onSubmit={handleLogin} className="space-y-6">
@@ -114,8 +108,12 @@ export function Login() {
               </Link>
             </div>
 
-            <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
-              Sign In as {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+            <Button 
+              type="submit" 
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+              disabled={loading}
+            >
+              {loading ? 'Signing In...' : 'Sign In'}
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </form>

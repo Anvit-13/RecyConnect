@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Layout } from './Layout';
 import { UserX, Trash2, Search, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
@@ -14,69 +14,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from './ui/alert-dialog';
-
-interface InactiveUser {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  lastActive: string;
-  inactiveDays: number;
-  totalRequests: number;
-}
+import adminService, { InactiveUser } from '../../services/adminService';
+import { toast } from 'sonner';
 
 export function AdminSettings() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState<InactiveUser | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [inactiveUsers, setInactiveUsers] = useState<InactiveUser[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [inactiveUsers, setInactiveUsers] = useState<InactiveUser[]>([
-    {
-      id: 'USR-001',
-      name: 'Alice Johnson',
-      email: 'alice.j@example.com',
-      role: 'User',
-      lastActive: '2025-11-15',
-      inactiveDays: 116,
-      totalRequests: 3,
-    },
-    {
-      id: 'USR-002',
-      name: 'Bob Smith',
-      email: 'bob.smith@example.com',
-      role: 'User',
-      lastActive: '2025-10-20',
-      inactiveDays: 142,
-      totalRequests: 1,
-    },
-    {
-      id: 'COL-003',
-      name: 'Charlie Brown',
-      email: 'charlie.b@example.com',
-      role: 'Collector',
-      lastActive: '2025-12-01',
-      inactiveDays: 100,
-      totalRequests: 0,
-    },
-    {
-      id: 'USR-004',
-      name: 'Diana Prince',
-      email: 'diana.p@example.com',
-      role: 'User',
-      lastActive: '2025-09-10',
-      inactiveDays: 182,
-      totalRequests: 5,
-    },
-    {
-      id: 'REC-005',
-      name: 'Edward Norton',
-      email: 'edward.n@example.com',
-      role: 'Recycler',
-      lastActive: '2025-11-30',
-      inactiveDays: 101,
-      totalRequests: 0,
-    },
-  ]);
+  useEffect(() => {
+    fetchInactiveUsers();
+  }, []);
+
+  const fetchInactiveUsers = async () => {
+    try {
+      const response = await adminService.getInactiveUsers(90);
+      setInactiveUsers(response.data.inactiveUsers);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to fetch inactive users');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredUsers = inactiveUsers.filter(user =>
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -89,23 +50,31 @@ export function AdminSettings() {
     setShowDeleteDialog(true);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (selectedUser) {
-      setInactiveUsers(prev => prev.filter(u => u.id !== selectedUser.id));
-      alert(`User ${selectedUser.name} has been deleted successfully.`);
-      setShowDeleteDialog(false);
-      setSelectedUser(null);
+      try {
+        await adminService.deleteUser(selectedUser.id);
+        setInactiveUsers(prev => prev.filter(u => u.id !== selectedUser.id));
+        toast.success(`User ${selectedUser.name} has been deleted successfully.`);
+        setShowDeleteDialog(false);
+        setSelectedUser(null);
+      } catch (error: any) {
+        toast.error(error.response?.data?.message || 'Failed to delete user');
+      }
     }
   };
 
   const getRoleColor = (role: string) => {
-    switch (role) {
-      case 'User':
+    const lowerRole = role.toLowerCase();
+    switch (lowerRole) {
+      case 'user':
         return 'bg-blue-50 text-blue-700';
-      case 'Collector':
+      case 'collector':
         return 'bg-yellow-50 text-yellow-700';
-      case 'Recycler':
+      case 'recycler':
         return 'bg-green-50 text-green-700';
+      case 'admin':
+        return 'bg-purple-50 text-purple-700';
       default:
         return 'bg-muted text-muted-foreground';
     }
@@ -145,7 +114,7 @@ export function AdminSettings() {
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Critical Inactive</p>
                 <h3 className="text-foreground mb-1">
-                  {inactiveUsers.filter(u => u.inactiveDays >= 180).length}
+                  {inactiveUsers.filter(u => u.inactive_days >= 180).length}
                 </h3>
                 <p className="text-sm text-red-600">180+ days inactive</p>
               </div>
@@ -160,7 +129,7 @@ export function AdminSettings() {
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Zero Activity</p>
                 <h3 className="text-foreground mb-1">
-                  {inactiveUsers.filter(u => u.totalRequests === 0).length}
+                  {inactiveUsers.filter(u => u.total_requests === 0).length}
                 </h3>
                 <p className="text-sm text-muted-foreground">No requests made</p>
               </div>
@@ -225,7 +194,13 @@ export function AdminSettings() {
                 </tr>
               </thead>
               <tbody className="bg-card divide-y divide-border">
-                {filteredUsers.length === 0 ? (
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">
+                      Loading inactive users...
+                    </td>
+                  </tr>
+                ) : filteredUsers.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">
                       No inactive users found
@@ -245,19 +220,19 @@ export function AdminSettings() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs ${getRoleColor(user.role)}`}>
-                          {user.role}
+                          {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-muted-foreground">
-                        {user.lastActive}
+                        {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`font-medium ${getInactivityColor(user.inactiveDays)}`}>
-                          {user.inactiveDays} days
+                        <span className={`font-medium ${getInactivityColor(user.inactive_days)}`}>
+                          {user.inactive_days} days
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-muted-foreground">
-                        {user.totalRequests}
+                        {user.total_requests}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <Button

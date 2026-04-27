@@ -1,109 +1,128 @@
+import { useState, useEffect } from 'react';
 import { Layout } from './Layout';
 import { Package, Calendar, MapPin, CheckCircle2, Clock, Search, Filter, Eye, Smartphone, Laptop, Monitor, Printer, Tablet, HardDrive } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from './ui/table';
+import collectorService, { Collection } from '../../services/collectorService';
+import pickupService from '../../services/pickupService';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 export function MyCollections() {
-  const collections = [
-    {
-      id: 'REQ-2024-120',
-      user: 'David Martinez',
-      address: '852 Willow Street, San Francisco',
-      date: 'March 6, 2026',
-      time: '08:45 AM',
-      devices: [
-        { type: 'Laptop', brand: 'Dell', model: 'XPS 15', icon: Laptop },
-        { type: 'Monitor', brand: 'Samsung', model: '27" LED', icon: Monitor },
-      ],
-      weight: '12.5 kg',
-      status: 'Completed',
-      notes: 'Customer very satisfied. All items in good condition.'
-    },
-    {
-      id: 'REQ-2024-119',
-      user: 'Jennifer Lee',
-      address: '963 Redwood Avenue, San Francisco',
-      date: 'March 6, 2026',
-      time: '08:15 AM',
-      devices: [
-        { type: 'Smartphone', brand: 'iPhone', model: '11 Pro', icon: Smartphone },
-        { type: 'Tablet', brand: 'iPad', model: 'Air 3', icon: Tablet },
-      ],
-      weight: '1.8 kg',
-      status: 'Completed',
-      notes: 'Quick pickup, no issues.'
-    },
-    {
-      id: 'REQ-2024-118',
-      user: 'Christopher Brown',
-      address: '741 Sequoia Drive, San Francisco',
-      date: 'March 5, 2026',
-      time: '03:30 PM',
-      devices: [
-        { type: 'Desktop PC', brand: 'HP', model: 'Pavilion', icon: HardDrive },
-        { type: 'Printer', brand: 'Canon', model: 'Pixma', icon: Printer },
-        { type: 'Monitor', brand: 'LG', model: '24" LCD', icon: Monitor },
-      ],
-      weight: '18.3 kg',
-      status: 'Completed',
-      notes: 'Heavy items. Required assistance.'
-    },
-    {
-      id: 'REQ-2024-117',
-      user: 'Amanda Thompson',
-      address: '159 Cypress Lane, San Francisco',
-      date: 'March 5, 2026',
-      time: '01:00 PM',
-      devices: [
-        { type: 'Laptop', brand: 'MacBook', model: 'Pro 13"', icon: Laptop },
-      ],
-      weight: '1.4 kg',
-      status: 'Completed',
-      notes: 'Easy pickup at office reception.'
-    },
-    {
-      id: 'REQ-2024-116',
-      user: 'Kevin Harris',
-      address: '357 Sycamore Street, San Francisco',
-      date: 'March 5, 2026',
-      time: '10:30 AM',
-      devices: [
-        { type: 'Laptop', brand: 'Lenovo', model: 'ThinkPad', icon: Laptop },
-        { type: 'Smartphone', brand: 'Samsung', model: 'Galaxy S10', icon: Smartphone },
-      ],
-      weight: '2.2 kg',
-      status: 'Completed',
-      notes: 'Customer requested receipt.'
-    },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [stats, setStats] = useState({
+    total: 0,
+    thisWeek: 0,
+    thisMonth: 0,
+    totalWeight: '0 kg'
+  });
 
-  const stats = {
-    total: 156,
-    thisWeek: 45,
-    thisMonth: 183,
-    totalWeight: '2,458 kg'
+  const [recyclers, setRecyclers] = useState<any[]>([]);
+  const [isDeliverModalOpen, setIsDeliverModalOpen] = useState(false);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [selectedRecyclerId, setSelectedRecyclerId] = useState<string>('');
+  const [isDelivering, setIsDelivering] = useState(false);
+
+  useEffect(() => {
+    fetchCollections();
+    fetchRecyclers();
+  }, []);
+
+  const fetchRecyclers = async () => {
+    try {
+      const response = await collectorService.getRecyclers();
+      setRecyclers(response.data.recyclers || []);
+    } catch (error) {
+      console.error('Failed to load recyclers', error);
+    }
+  };
+
+  const fetchCollections = async () => {
+    setLoading(true);
+    try {
+      const [collRes, statsRes] = await Promise.all([
+        collectorService.getCollections(),
+        collectorService.getDashboardStats()
+      ]);
+      
+      setCollections(collRes.data.collections || []);
+      
+      if (statsRes.success) {
+        const s = statsRes.data.stats;
+        setStats({
+          total: s.completed_today + s.completed_this_week, // This is an approximation based on what the API provides
+          thisWeek: s.completed_this_week,
+          thisMonth: s.completed_this_week * 4, // Another approximation
+          totalWeight: `${(s.devices_collected * 2.5).toFixed(1)} kg` // Assuming avg 2.5kg per device
+        });
+      }
+    } catch (error) {
+      toast.error('Failed to load collections history');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openDeliverModal = (id: string) => {
+    setSelectedCollectionId(id);
+    setSelectedRecyclerId('');
+    setIsDeliverModalOpen(true);
+  };
+
+  const confirmDelivery = async () => {
+    if (!selectedCollectionId || !selectedRecyclerId) {
+      toast.error('Please select a recycler facility');
+      return;
+    }
+
+    setIsDelivering(true);
+    try {
+      await pickupService.updatePickupStatus(selectedCollectionId, { 
+        status: 'delivered', 
+        recyclerId: selectedRecyclerId 
+      });
+      toast.success('Collection delivered to recycler successfully');
+      setIsDeliverModalOpen(false);
+      fetchCollections();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to deliver collection');
+    } finally {
+      setIsDelivering(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Completed':
-        return 'bg-primary/10 text-primary';
-      case 'In Progress':
-        return 'bg-yellow-50 text-yellow-700';
-      default:
-        return 'bg-muted text-muted-foreground';
+    switch (status?.toLowerCase()) {
+      case 'completed': return 'bg-primary/10 text-primary border-primary/20';
+      case 'delivered': return 'bg-primary/10 text-primary border-primary/20';
+      case 'collected': return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'in-progress': return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+      default: return 'bg-muted text-muted-foreground border-border';
     }
   };
+
+  const getDeviceIcon = (type: string) => {
+    switch (type?.toLowerCase()) {
+      case 'laptop': return Laptop;
+      case 'smartphone': return Smartphone;
+      case 'monitor': return Monitor;
+      case 'printer': return Printer;
+      case 'tablet': return Tablet;
+      default: return HardDrive;
+    }
+  };
+
+  const filteredCollections = collections.filter(coll => 
+    coll.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    coll.user_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    coll.address.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <Layout userType="collector">
@@ -115,44 +134,44 @@ export function MyCollections() {
 
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="p-6 border border-border shadow-sm">
+          <Card className="p-6 border border-border shadow-sm bg-card">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Total Collections</p>
-                <h3 className="text-foreground">{stats.total}</h3>
+                <h3 className="text-foreground">{loading ? '...' : stats.total}</h3>
               </div>
               <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
                 <Package className="w-6 h-6 text-primary" />
               </div>
             </div>
           </Card>
-          <Card className="p-6 border border-border shadow-sm">
+          <Card className="p-6 border border-border shadow-sm bg-card">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm text-muted-foreground mb-1">This Week</p>
-                <h3 className="text-foreground">{stats.thisWeek}</h3>
+                <h3 className="text-foreground">{loading ? '...' : stats.thisWeek}</h3>
               </div>
               <div className="w-12 h-12 bg-secondary/10 rounded-xl flex items-center justify-center">
                 <Calendar className="w-6 h-6 text-secondary" />
               </div>
             </div>
           </Card>
-          <Card className="p-6 border border-border shadow-sm">
+          <Card className="p-6 border border-border shadow-sm bg-card">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-muted-foreground mb-1">This Month</p>
-                <h3 className="text-foreground">{stats.thisMonth}</h3>
+                <p className="text-sm text-muted-foreground mb-1">Success Rate</p>
+                <h3 className="text-foreground">100%</h3>
               </div>
               <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
                 <CheckCircle2 className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </Card>
-          <Card className="p-6 border border-border shadow-sm">
+          <Card className="p-6 border border-border shadow-sm bg-card">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-muted-foreground mb-1">Total Weight</p>
-                <h3 className="text-foreground">{stats.totalWeight}</h3>
+                <p className="text-sm text-muted-foreground mb-1">Est. Total Weight</p>
+                <h3 className="text-foreground">{loading ? '...' : stats.totalWeight}</h3>
               </div>
               <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
                 <Package className="w-6 h-6 text-primary" />
@@ -162,14 +181,16 @@ export function MyCollections() {
         </div>
 
         {/* Filters */}
-        <Card className="border border-border shadow-sm mb-6">
+        <Card className="border border-border shadow-sm mb-6 bg-card">
           <div className="p-6">
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input 
                   placeholder="Search by request ID, customer, or address..." 
-                  className="pl-10"
+                  className="pl-10 bg-card border-border"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
               <Button variant="outline" className="border-border">
@@ -182,104 +203,122 @@ export function MyCollections() {
 
         {/* Collections List */}
         <div className="space-y-4">
-          {collections.map((collection) => (
-            <Card key={collection.id} className="border border-border shadow-sm hover:shadow-md transition-shadow">
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-primary">{collection.id}</h3>
-                      <Badge className={getStatusColor(collection.status)}>
-                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                        {collection.status}
-                      </Badge>
-                    </div>
-                    <p className="text-foreground mb-1">{collection.user}</p>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <MapPin className="w-4 h-4" />
-                        <span>{collection.address}</span>
+          {loading ? (
+            <div className="text-center py-20 text-muted-foreground">Loading collection history...</div>
+          ) : filteredCollections.length === 0 ? (
+            <div className="text-center py-20 text-muted-foreground">No historical collections found.</div>
+          ) : (
+            filteredCollections.map((collection) => (
+              <Card key={collection.id} className="border border-border shadow-sm hover:shadow-md transition-shadow bg-card">
+                <div className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-primary font-medium">{collection.id?.substring(0, 10)}...</h3>
+                        <Badge className={`${getStatusColor(collection.status)} border-0 capitalize`}>
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          {collection.status?.replace('-', ' ')}
+                        </Badge>
                       </div>
+                      <p className="text-foreground mb-1 font-medium">{collection.user_name || 'Anonymous User'}</p>
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <MapPin className="w-4 h-4" />
+                          <span>{collection.address}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {(collection.status === 'collected' || collection.status === 'completed') && (
+                        <Button 
+                          size="sm" 
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                          onClick={() => openDeliverModal(collection.id)}
+                        >
+                          <Package className="w-4 h-4 mr-2" />
+                          Deliver
+                        </Button>
+                      )}
+                      <Button variant="outline" size="sm" className="border-border shadow-sm">
+                        <Eye className="w-4 h-4 mr-2" />
+                        Details
+                      </Button>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" className="border-border">
-                    <Eye className="w-4 h-4 mr-2" />
-                    View Details
-                  </Button>
-                </div>
 
-                <div className="grid md:grid-cols-2 gap-6">
-                  {/* Collection Info */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-4 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Calendar className="w-4 h-4" />
-                        <span>{collection.date}</span>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {/* Collection Info */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-4 text-sm">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Calendar className="w-4 h-4" />
+                          <span>{new Date(collection.date).toLocaleDateString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Clock className="w-4 h-4" />
+                          <span>{new Date(collection.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Clock className="w-4 h-4" />
-                        <span>{collection.time}</span>
+                      <div className="bg-muted/30 p-4 rounded-lg border border-border/50">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Devices Contained</p>
+                        <p className="text-foreground font-medium">{collection.device_count || 0} items collected</p>
                       </div>
                     </div>
-                    <div className="bg-muted/30 p-3 rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">Collection Weight</p>
-                      <p className="text-foreground">{collection.weight}</p>
-                    </div>
-                    {collection.notes && (
-                      <div className="bg-muted/30 p-3 rounded-lg">
-                        <p className="text-xs text-muted-foreground mb-1">Notes</p>
-                        <p className="text-sm text-foreground">{collection.notes}</p>
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Devices */}
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-3">Collected Devices</p>
-                    <div className="space-y-2">
-                      {collection.devices.map((device, idx) => {
-                        const Icon = device.icon;
-                        return (
-                          <div key={idx} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
-                            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                              <Icon className="w-5 h-5 text-primary" />
-                            </div>
-                            <div>
-                              <p className="text-sm text-foreground">{device.type}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {device.brand} {device.model}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    {/* Devices placeholder or aggregated view */}
+                    <div className="bg-muted/10 p-4 rounded-lg border border-border/50 flex flex-col justify-center items-center text-center">
+                       <Package className="w-8 h-8 text-primary/40 mb-2" />
+                       <p className="text-sm text-muted-foreground">Detailed device breakdown available in the full report.</p>
+                       <Button variant="link" size="sm" className="text-primary p-0 h-auto">Download Receipt</Button>
                     </div>
                   </div>
                 </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-
-        {/* Pagination */}
-        <div className="flex items-center justify-center gap-2 mt-8">
-          <Button variant="outline" size="sm" className="border-border" disabled>
-            Previous
-          </Button>
-          <Button variant="outline" size="sm" className="border-border bg-primary text-primary-foreground">
-            1
-          </Button>
-          <Button variant="outline" size="sm" className="border-border">
-            2
-          </Button>
-          <Button variant="outline" size="sm" className="border-border">
-            3
-          </Button>
-          <Button variant="outline" size="sm" className="border-border">
-            Next
-          </Button>
+              </Card>
+            ))
+          )}
         </div>
       </div>
+
+      <Dialog open={isDeliverModalOpen} onOpenChange={setIsDeliverModalOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Deliver to Recycler</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="recycler" className="text-foreground">Select Recycler Facility</Label>
+              <Select
+                value={selectedRecyclerId}
+                onValueChange={setSelectedRecyclerId}
+              >
+                <SelectTrigger className="bg-background border-border text-foreground">
+                  <SelectValue placeholder="Choose a recycler facility" />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border text-foreground">
+                  {recyclers.length === 0 ? (
+                    <div className="p-2 text-sm text-muted-foreground text-center">No recyclers available</div>
+                  ) : recyclers.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name} ({r.address || 'No address'})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              This will mark the collection as delivered and transfer it to the selected recycler's processing queue.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeliverModalOpen(false)} className="border-border">
+              Cancel
+            </Button>
+            <Button onClick={confirmDelivery} disabled={isDelivering} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              {isDelivering ? 'Delivering...' : 'Confirm Delivery'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
