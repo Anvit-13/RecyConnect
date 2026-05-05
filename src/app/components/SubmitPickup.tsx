@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { Layout } from './Layout';
-import { Upload, Calendar, MapPin, Package, Plus, Trash2, IndianRupee } from 'lucide-react';
+import { Upload, Calendar, MapPin, Package, Plus, Trash2, IndianRupee, X, ImageIcon } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
@@ -20,6 +20,9 @@ interface Device {
 export function SubmitPickup() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [devices, setDevices] = useState<Device[]>([
     {
@@ -111,6 +114,27 @@ export function SubmitPickup() {
     }
   };
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const newFiles = [...selectedImages, ...files].slice(0, 10); // max 10 images
+    setSelectedImages(newFiles);
+
+    // Generate previews
+    const previews = newFiles.map(file => URL.createObjectURL(file));
+    setImagePreviews(previews);
+
+    // Reset input so the same file can be re-selected if removed
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeImage = (index: number) => {
+    URL.revokeObjectURL(imagePreviews[index]);
+    setSelectedImages(prev => prev.filter((_, i) => i !== index));
+    setImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -125,11 +149,14 @@ export function SubmitPickup() {
         estimated_value: calculateDeviceValue(device),
       }));
 
-      await pickupService.createPickupRequest({
-        devices: formattedDevices,
-        address: pickupInfo.address,
-        pickupDate: pickupInfo.pickupDate,
-      });
+      // Build FormData so images are sent as multipart/form-data
+      const formData = new FormData();
+      formData.append('devices', JSON.stringify(formattedDevices));
+      formData.append('address', pickupInfo.address);
+      formData.append('pickupDate', pickupInfo.pickupDate);
+      selectedImages.forEach(img => formData.append('images', img));
+
+      await pickupService.createPickupRequest(formData);
       
       toast.success(`Pickup request submitted successfully! Total estimated value: ₹${totalEstimatedValue}`);
       navigate('/my-requests');
@@ -534,13 +561,53 @@ export function SubmitPickup() {
               <div className="p-6 border-b border-border">
                 <h3 className="text-foreground">Device Images (Optional)</h3>
               </div>
-              <div className="p-6">
-                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors cursor-pointer">
+              <div className="p-6 space-y-4">
+                {/* Upload Zone */}
+                <div
+                  className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-foreground mb-2">Click to upload or drag and drop</p>
-                  <p className="text-sm text-muted-foreground">PNG, JPG up to 10MB</p>
-                  <input type="file" className="hidden" accept="image/*" multiple />
+                  <p className="text-sm text-muted-foreground">PNG, JPG, WEBP up to 5MB each &bull; Max 10 images</p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                    multiple
+                    onChange={handleImageChange}
+                  />
                 </div>
+
+                {/* Image Previews */}
+                {imagePreviews.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                    {imagePreviews.map((src, i) => (
+                      <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-border">
+                        <img
+                          src={src}
+                          alt={`Device image ${i + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(i)}
+                          className="absolute top-1 right-1 bg-black/60 hover:bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Remove image"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/40 px-1.5 py-0.5">
+                          <p className="text-white text-[10px] truncate flex items-center gap-1">
+                            <ImageIcon className="w-2.5 h-2.5 shrink-0" />
+                            {selectedImages[i]?.name}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </Card>
 

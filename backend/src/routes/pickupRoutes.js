@@ -9,6 +9,7 @@ import {
   deletePickupRequest
 } from '../controllers/pickupController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { upload } from '../middleware/upload.js';
 
 const router = express.Router();
 
@@ -25,7 +26,7 @@ const createPickupValidation = [
 ];
 
 // Routes
-router.post('/', authenticate, createPickupValidation, createPickupRequest);
+router.post('/', authenticate, upload.array('images', 10), createPickupValidation, createPickupRequest);
 router.get('/my-requests', authenticate, getUserPickupRequests);
 router.get('/all', authenticate, authorize('admin', 'collector', 'recycler'), getAllPickupRequests);
 router.get('/:id', authenticate, getPickupRequestById);

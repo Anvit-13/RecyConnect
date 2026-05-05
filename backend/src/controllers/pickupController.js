@@ -7,12 +7,14 @@ export const createPickupRequest = async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const { devices, address, pickupDate } = req.body;
+    const { address, pickupDate } = req.body;
+  // devices arrives as a JSON string in multipart/form-data
+  const devices = typeof req.body.devices === 'string' ? JSON.parse(req.body.devices) : req.body.devices;
     const userId = req.user.id;
 
     // Calculate total estimated value
     let totalEstimatedValue = 0;
-    devices.forEach(device => {
+    (devices || []).forEach(device => {
       const value = calculateEstimatedValue(device);
       totalEstimatedValue += value;
     });
@@ -36,7 +38,7 @@ export const createPickupRequest = async (req, res) => {
     };
 
     // Insert devices
-    const devicePromises = devices.map(device => {
+    const devicePromises = (devices || []).map(device => {
       const estimatedValue = calculateEstimatedValue(device);
       const deviceId = generateId();
       return client.query(
@@ -57,8 +59,24 @@ export const createPickupRequest = async (req, res) => {
 
     const insertedDevices = await Promise.all(devicePromises);
 
-    await client.query('COMMIT');
+    // Save uploaded images if any
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      // For now, associate all images with the first device (or you could map differently)
+      const firstDeviceId = insertedDevices.length > 0 ? insertedDevices[0].id : null;
+      if (firstDeviceId) {
+        const imageInsertPromises = req.files.map(file => {
+          const imageUrl = `/uploads/${file.filename}`;
+          return client.query(
+            `INSERT INTO device_images (id, device_id, image_url) VALUES (?, ?, ?)`,
+            [generateId(), firstDeviceId, imageUrl]
+          );
+        });
+        await Promise.all(imageInsertPromises);
+      }
+    }
 
+    await client.query('COMMIT');
+    
     res.status(201).json(formatResponse(true, {
       pickupRequest,
       devices: insertedDevices
@@ -67,6 +85,10 @@ export const createPickupRequest = async (req, res) => {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Create pickup error:', error);
+    // If files were uploaded, log their paths for debugging
+    if (req.files && Array.isArray(req.files)) {
+      console.log('Uploaded files:', req.files.map(f => f.filename));
+    }
     res.status(500).json(formatError('Failed to create pickup request'));
   } finally {
     client.release();

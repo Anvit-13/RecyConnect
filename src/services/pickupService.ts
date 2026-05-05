@@ -33,12 +33,10 @@ export interface PickupRequest {
 }
 
 class PickupService {
-  async createPickupRequest(data: {
-    devices: Device[];
-    address: string;
-    pickupDate: string;
-  }): Promise<{ success: boolean; data: { pickupRequest: PickupRequest; devices: Device[] }; message: string }> {
-    const response = await api.post('/pickups', data);
+  async createPickupRequest(formData: FormData): Promise<{ success: boolean; data: { pickupRequest: PickupRequest; devices: Device[] }; message: string }> {
+    const response = await api.post('/pickups', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return response.data;
   }
 
